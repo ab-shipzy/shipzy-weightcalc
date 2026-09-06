@@ -193,6 +193,11 @@ main{flex:1; padding:14px 14px 190px; max-width:560px; width:100%; margin:0 auto
   margin-top:12px; overflow:hidden; display:none;
 }
 .sumcard.show{display:block;}
+.sumcard.flash{animation:sumflash 1.6s ease;}
+@keyframes sumflash{
+  0%{box-shadow:0 0 0 3px var(--mint); }
+  100%{box-shadow:0 0 0 0 rgba(67,237,212,0);}
+}
 .sumhead{
   background:var(--navy); color:#fff; padding:10px 14px;
   display:flex; justify-content:space-between; align-items:center;
@@ -925,8 +930,14 @@ main{flex:1; padding:14px 14px 190px; max-width:560px; width:100%; margin:0 auto
         'Actual: ' + sum.actual + ' | Volumetric: ' + sum.vol + '\n' +
         'CHARGEABLE: ' + sum.charge + ' kg';
       if (parsed.note) lines += '\nNote: ' + parsed.note;
-      lines += '\nBoxes neeche fill ho gaye — verify kar lena.';
+      lines += '\nBoxes fill ho gaye — poora reply dobara dekhne ke liye ✨ AI button dabao.';
       chatMsg(lines);
+      closeOverlay('aiOverlay');
+      var sc = document.getElementById('sumCard');
+      sc.classList.remove('flash');
+      void sc.offsetWidth;
+      sc.classList.add('flash');
+      if (typeof sc.scrollIntoView === 'function') sc.scrollIntoView({behavior:'smooth', block:'center'});
     }).catch(function(err){
       thinking.remove();
       chatMsg('Network error: ' + err.message, 'err');
