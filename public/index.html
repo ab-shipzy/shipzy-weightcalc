@@ -182,6 +182,44 @@ main{flex:1; padding:14px 14px 190px; max-width:560px; width:100%; margin:0 auto
   width:100%; border:none; background:var(--navy); color:var(--mint); border-radius:12px;
   padding:13px; font-family:inherit; font-weight:800; font-size:14px; cursor:pointer;
 }
+/* summary card */
+.sumcard{
+  background:var(--card); border:1px solid var(--border); border-radius:14px;
+  margin-top:12px; overflow:hidden; display:none;
+}
+.sumcard.show{display:block;}
+.sumhead{
+  background:var(--navy); color:#fff; padding:10px 14px;
+  display:flex; justify-content:space-between; align-items:center;
+}
+.sumhead .t{font-size:13px; font-weight:800; letter-spacing:.3px;}
+.sumhead .t small{display:block; font-size:10px; font-weight:500; color:var(--mint); letter-spacing:.5px;}
+.copybtn{
+  border:1px solid rgba(255,255,255,.3); background:transparent; color:#fff;
+  border-radius:8px; padding:5px 10px; font-family:inherit; font-size:11.5px; font-weight:700; cursor:pointer;
+}
+.sumtable{width:100%; border-collapse:collapse; font-size:11.5px;}
+.sumtable th{
+  text-align:left; padding:7px 8px; color:var(--muted); font-size:9.5px;
+  text-transform:uppercase; letter-spacing:.4px; border-bottom:1px solid var(--border);
+  font-weight:700; white-space:nowrap;
+}
+.sumtable td{
+  padding:7px 8px; border-bottom:1px solid #eef2f6;
+  font-family:'JetBrains Mono',monospace; font-size:11.5px; white-space:nowrap;
+}
+.sumtable td:first-child, .sumtable th:first-child{padding-left:14px;}
+.sumtable td:last-child, .sumtable th:last-child{padding-right:14px; text-align:right;}
+.sumtable th:last-child{text-align:right;}
+.sumtotals{padding:9px 14px; display:flex; justify-content:space-between; font-size:11.5px; color:var(--muted); border-bottom:1px solid var(--border);}
+.sumtotals b{font-family:'JetBrains Mono',monospace; color:var(--text);}
+.sumcharge{
+  padding:11px 14px; display:flex; justify-content:space-between; align-items:center;
+  background:#e9f6f3;
+}
+.sumcharge .lbl{font-size:11px; font-weight:800; letter-spacing:.5px; text-transform:uppercase; color:var(--navy);}
+.sumcharge .val{font-family:'JetBrains Mono',monospace; font-size:20px; font-weight:700; color:var(--navy);}
+.sumcharge .val small{font-size:12px; color:var(--muted);}
 </style>
 </head>
 <body>
@@ -205,6 +243,28 @@ main{flex:1; padding:14px 14px 190px; max-width:560px; width:100%; margin:0 auto
 <main>
   <div id="boxes"></div>
   <button class="addbtn" id="addBox">+ Add Box Type</button>
+
+  <div class="sumcard" id="sumCard">
+    <div class="sumhead">
+      <div class="t">📋 Chargeable Weight Summary<small id="sumMode"></small></div>
+      <button class="copybtn" id="copySummary">Copy</button>
+    </div>
+    <table class="sumtable">
+      <thead>
+        <tr><th>#</th><th>Boxes</th><th>Wt/box</th><th>Dimensions</th><th>Vol. wt</th><th>Chg. wt</th></tr>
+      </thead>
+      <tbody id="sumBody"></tbody>
+    </table>
+    <div class="sumtotals">
+      <span>Actual <b id="sumActual">0</b></span>
+      <span>Volumetric <b id="sumVol">0</b></span>
+      <span>CBM <b id="sumCbm">0</b></span>
+    </div>
+    <div class="sumcharge">
+      <span class="lbl">Total Chargeable</span>
+      <span class="val"><span id="sumCharge">0</span> <small>kg</small></span>
+    </div>
+  </div>
 </main>
 
 <div class="resultbar">
@@ -405,9 +465,20 @@ main{flex:1; padding:14px 14px 190px; max-width:560px; width:100%; margin:0 auto
 
   function totals(){
     var boxes=0, actual=0, vol=0, cbm=0;
-    state.boxes.forEach(function(b){
+    var lines = [];
+    state.boxes.forEach(function(b, idx){
       var c = calcBox(b);
       boxes += c.qty; actual += c.actual; vol += c.vol; cbm += c.cbm;
+      if (c.vol > 0 || c.actual > 0){
+        lines.push({
+          n: idx + 1,
+          qty: c.qty,
+          wt: num(b.wt),
+          dims: (num(b.l)||0) + '×' + (num(b.w)||0) + '×' + (num(b.h)||0) + ' ' + (b.unit || 'cm'),
+          vol: c.vol,
+          chg: Math.max(c.actual, c.vol)
+        });
+      }
     });
     var charge = Math.max(actual, vol);
     var chargeRounded = Math.round(charge); // MROUND to 1 kg
@@ -418,7 +489,59 @@ main{flex:1; padding:14px 14px 190px; max-width:560px; width:100%; margin:0 auto
     document.getElementById('rCbm').textContent = cbm.toFixed(3);
     document.getElementById('rCharge').textContent = chargeRounded.toFixed(0);
     document.getElementById('rBasis').textContent = basis;
+    renderSummary(lines, actual, vol, cbm, chargeRounded);
   }
+
+  var lastSummaryText = '';
+  function renderSummary(lines, actual, vol, cbm, chargeRounded){
+    var card = document.getElementById('sumCard');
+    if (!lines.length){
+      card.classList.remove('show');
+      lastSummaryText = '';
+      return;
+    }
+    card.classList.add('show');
+    document.getElementById('sumMode').textContent = MODE_LABEL[state.mode];
+    var body = document.getElementById('sumBody');
+    body.innerHTML = '';
+    var txt = 'ShipzyCart — Chargeable Weight\nService: ' + MODE_LABEL[state.mode] + '\n';
+    lines.forEach(function(L){
+      var tr = document.createElement('tr');
+      tr.innerHTML = '<td>' + L.n + '</td><td>' + L.qty + '</td><td>' + (L.wt ? L.wt + ' kg' : '—') +
+        '</td><td>' + L.dims + '</td><td>' + L.vol.toFixed(2) + '</td><td>' + Math.round(L.chg) + ' kg</td>';
+      body.appendChild(tr);
+      txt += L.n + ') ' + L.qty + ' box × ' + (L.wt || 0) + ' kg | ' + L.dims +
+        ' | Vol ' + L.vol.toFixed(2) + ' kg | Chg ' + Math.round(L.chg) + ' kg\n';
+    });
+    document.getElementById('sumActual').textContent = actual.toFixed(2) + ' kg';
+    document.getElementById('sumVol').textContent = vol.toFixed(2) + ' kg';
+    document.getElementById('sumCbm').textContent = cbm.toFixed(3);
+    document.getElementById('sumCharge').textContent = chargeRounded.toFixed(0);
+    txt += 'Total Actual: ' + actual.toFixed(2) + ' kg\nTotal Volumetric: ' + vol.toFixed(2) + ' kg\nTotal CBM: ' + cbm.toFixed(3) +
+      '\nTOTAL CHARGEABLE: ' + chargeRounded.toFixed(0) + ' kg';
+    lastSummaryText = txt;
+  }
+
+  document.getElementById('copySummary').addEventListener('click', function(){
+    if (!lastSummaryText) return;
+    var btn = this;
+    function done(ok){
+      btn.textContent = ok ? 'Copied ✓' : 'Copy failed';
+      setTimeout(function(){ btn.textContent = 'Copy'; }, 1500);
+    }
+    if (navigator.clipboard && navigator.clipboard.writeText){
+      navigator.clipboard.writeText(lastSummaryText).then(function(){ done(true); }, function(){ done(false); });
+    } else {
+      var ta = document.createElement('textarea');
+      ta.value = lastSummaryText;
+      document.body.appendChild(ta);
+      ta.select();
+      var ok = false;
+      try { ok = document.execCommand('copy'); } catch(e){}
+      document.body.removeChild(ta);
+      done(ok);
+    }
+  });
 
   // tabs
   document.getElementById('tabs').addEventListener('click', function(e){
