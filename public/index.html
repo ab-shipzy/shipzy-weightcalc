@@ -289,12 +289,13 @@ main{flex:1; padding:14px 14px 190px; max-width:560px; width:100%; margin:0 auto
       boxes += c.qty; actual += c.actual; vol += c.vol; cbm += c.cbm;
     });
     var charge = Math.max(actual, vol);
+    var chargeRounded = Math.round(charge); // MROUND to 1 kg
     var basis = charge === 0 ? '—' : (vol >= actual ? 'Volumetric weight higher' : 'Actual weight higher');
     document.getElementById('rBoxes').textContent = boxes;
     document.getElementById('rActual').textContent = actual.toFixed(2) + ' kg';
     document.getElementById('rVol').textContent = vol.toFixed(2) + ' kg';
     document.getElementById('rCbm').textContent = cbm.toFixed(3);
-    document.getElementById('rCharge').textContent = charge.toFixed(2);
+    document.getElementById('rCharge').textContent = chargeRounded.toFixed(0);
     document.getElementById('rBasis').textContent = basis;
   }
 
