@@ -276,9 +276,13 @@ main{flex:1; padding:14px 14px 190px; max-width:560px; width:100%; margin:0 auto
       <button class="closebtn" data-close="setOverlay">✕</button>
     </div>
     <div class="setfield">
-      <label>Claude API Key</label>
+      <label>Server Key (all devices)</label>
+      <small id="serverKeyStatus" style="margin-top:0;">Checking…</small>
+    </div>
+    <div class="setfield">
+      <label>Claude API Key (sirf is device — optional)</label>
       <input type="password" id="apiKey" placeholder="sk-ant-api03-..." autocomplete="off">
-      <small>console.anthropic.com se key banao. Key sirf is device ke browser mein save hoti hai (localStorage) — kisi server pe nahi jaati, calls seedha Anthropic ko.</small>
+      <small>console.anthropic.com se key. Sirf is device ke browser mein save hoti hai. Server key set ho to iski zaroorat nahi.</small>
     </div>
     <div class="setfield">
       <label>Model</label>
@@ -742,14 +746,27 @@ main{flex:1; padding:14px 14px 190px; max-width:560px; width:100%; margin:0 auto
     return content;
   }
 
+  // ---------- Server key detection ----------
+  var serverHasKey = false;
+  function refreshKeyStatus(){
+    fetch('/api/keystatus').then(function(r){ return r.json(); }).then(function(d){
+      serverHasKey = !!(d && d.hasKey);
+      var el = document.getElementById('serverKeyStatus');
+      if (el) el.textContent = serverHasKey
+        ? '✅ Server key active — sab devices pe bina key ke chalega. Neeche wali local key ki zaroorat nahi.'
+        : 'Server pe key set nahi hai. Sab devices pe chalane ke liye: Railway → service → Variables → ANTHROPIC_API_KEY add karo. Tab tak neeche local key (sirf is device ke liye) use hogi.';
+    }).catch(function(){});
+  }
+  refreshKeyStatus();
+
   function aiParse(){
     var input = document.getElementById('aiInput');
     var btn = document.getElementById('aiSend');
     var msg = input.value.trim();
     if (!msg && !attached) return;
     var s = loadSettings();
-    if (!s.apiKey){
-      chatMsg('API key set nahi hai. ⚙ Settings mein Claude API key paste karo pehle.', 'err');
+    if (!serverHasKey && !s.apiKey){
+      chatMsg('API key set nahi hai. ⚙ Settings mein Claude API key paste karo, ya Railway Variables mein ANTHROPIC_API_KEY set karo (sab devices ke liye).', 'err');
       closeOverlay('aiOverlay'); openOverlay('setOverlay');
       return;
     }
@@ -762,14 +779,22 @@ main{flex:1; padding:14px 14px 190px; max-width:560px; width:100%; margin:0 auto
     btn.disabled = true;
     var thinking = chatMsg('Parsing…');
 
-    fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
+    var url, headers;
+    if (serverHasKey){
+      url = '/api/parse';
+      headers = { 'Content-Type': 'application/json' };
+    } else {
+      url = 'https://api.anthropic.com/v1/messages';
+      headers = {
         'Content-Type': 'application/json',
         'x-api-key': s.apiKey,
         'anthropic-version': '2023-06-01',
         'anthropic-dangerous-direct-browser-access': 'true'
-      },
+      };
+    }
+    fetch(url, {
+      method: 'POST',
+      headers: headers,
       body: JSON.stringify({
         model: s.model || 'claude-haiku-4-5',
         max_tokens: 1000,
