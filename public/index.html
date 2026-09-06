@@ -246,10 +246,16 @@ main{flex:1; padding:14px 14px 190px; max-width:560px; width:100%; margin:0 auto
       <button class="closebtn" data-close="aiOverlay">✕</button>
     </div>
     <div class="aichat" id="aiChat">
-      <div class="aimsg">Customer ka WhatsApp message yahan paste karo — jaise "3 boxes 25kg each 45x40x30" — main padh ke boxes fill kar dunga aur chargeable weight nikal dunga.</div>
+      <div class="aimsg">Customer ka WhatsApp message paste karo — ya packing list ki photo / screenshot / PDF attach karo (📎). Main padh ke boxes fill kar dunga aur chargeable weight nikal dunga.</div>
+    </div>
+    <div id="aiFileChip" style="display:none;align-items:center;gap:8px;background:#e7f1ff;border:1px solid #cfe3ff;border-radius:10px;padding:7px 10px;margin-bottom:8px;font-size:12.5px;">
+      <span id="aiFileName" style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600;"></span>
+      <button id="aiFileRemove" style="border:none;background:transparent;color:var(--danger);font-weight:700;cursor:pointer;font-family:inherit;font-size:12px;">✕</button>
     </div>
     <div class="airow">
-      <textarea id="aiInput" placeholder="Paste message here..."></textarea>
+      <button class="sendbtn" id="aiAttach" style="background:#eef2f6;color:var(--navy);padding:12px 13px;" title="Attach image / PDF">📎</button>
+      <input type="file" id="aiFile" accept="image/*,application/pdf" style="display:none;">
+      <textarea id="aiInput" placeholder="Paste message here... (ya sirf photo/PDF attach karo)"></textarea>
       <button class="sendbtn" id="aiSend">Parse</button>
     </div>
   </div>
@@ -472,7 +478,7 @@ main{flex:1; padding:14px 14px 190px; max-width:560px; width:100%; margin:0 auto
   }
 
   function buildPrompt(msg){
-    return 'You extract shipment box data from messy customer messages (often Hinglish WhatsApp texts).\n' +
+    return 'You extract shipment box data from messy customer messages (often Hinglish WhatsApp texts). The data may be in the text below AND/OR in an attached image (photo, chat screenshot, packing list) or PDF — read whichever is present.\n' +
       'Message:\n"""\n' + msg + '\n"""\n\n' +
       'Extract every distinct box type. Respond with ONLY a JSON object, no markdown, no explanation:\n' +
       '{"unit":"cm|in|ft|m","boxes":[{"qty":N,"weight_kg":N,"l":N,"w":N,"h":N}],"mode":"cft10|cft6|air|null","note":"one short line: anything ambiguous or assumed"}\n' +
@@ -521,19 +527,121 @@ main{flex:1; padding:14px 14px 190px; max-width:560px; width:100%; margin:0 auto
     };
   }
 
+  // ---------- Attachments ----------
+  var attached = null; // { kind:'image'|'pdf', media_type, data, name }
+  var MAX_BYTES = 4500000;
+
+  function showChip(){
+    var chip = document.getElementById('aiFileChip');
+    if (attached){
+      document.getElementById('aiFileName').textContent = '📎 ' + attached.name;
+      chip.style.display = 'flex';
+    } else {
+      chip.style.display = 'none';
+    }
+  }
+  document.getElementById('aiAttach').addEventListener('click', function(){
+    document.getElementById('aiFile').click();
+  });
+  document.getElementById('aiFileRemove').addEventListener('click', function(){
+    attached = null;
+    document.getElementById('aiFile').value = '';
+    showChip();
+  });
+
+  function dataUrlToB64(dataUrl){
+    var idx = dataUrl.indexOf(',');
+    return idx >= 0 ? dataUrl.slice(idx + 1) : dataUrl;
+  }
+
+  function downscaleImage(file, cb){
+    // try canvas downscale (max side 1568, jpeg); fallback to raw file
+    var reader = new FileReader();
+    reader.onload = function(){
+      var raw = { kind:'image', media_type: file.type || 'image/jpeg', data: dataUrlToB64(reader.result), name: file.name };
+      try {
+        var img = new Image();
+        img.onload = function(){
+          try {
+            var MAX = 1568;
+            var scale = Math.min(1, MAX / Math.max(img.width, img.height));
+            var canvas = document.createElement('canvas');
+            canvas.width = Math.round(img.width * scale);
+            canvas.height = Math.round(img.height * scale);
+            canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+            var out = canvas.toDataURL('image/jpeg', 0.85);
+            cb({ kind:'image', media_type:'image/jpeg', data: dataUrlToB64(out), name: file.name });
+          } catch(e){ cb(raw); }
+        };
+        img.onerror = function(){ cb(raw); };
+        img.src = reader.result;
+      } catch(e){ cb(raw); }
+    };
+    reader.onerror = function(){ cb(null); };
+    reader.readAsDataURL(file);
+  }
+
+  document.getElementById('aiFile').addEventListener('change', function(e){
+    var file = e.target.files && e.target.files[0];
+    if (!file) return;
+    if (file.type === 'application/pdf'){
+      if (file.size > MAX_BYTES){
+        chatMsg('PDF badi hai (' + (file.size/1048576).toFixed(1) + ' MB) — 4.5 MB se chhoti chahiye.', 'err');
+        e.target.value = '';
+        return;
+      }
+      var reader = new FileReader();
+      reader.onload = function(){
+        attached = { kind:'pdf', media_type:'application/pdf', data: dataUrlToB64(reader.result), name: file.name };
+        showChip();
+      };
+      reader.readAsDataURL(file);
+    } else if (file.type && file.type.indexOf('image/') === 0){
+      downscaleImage(file, function(res){
+        if (!res){ chatMsg('File padh nahi paya, dubara try karo.', 'err'); return; }
+        if (res.data.length * 0.75 > MAX_BYTES){
+          chatMsg('Image bahut badi hai — chhoti photo ya screenshot try karo.', 'err');
+          return;
+        }
+        attached = res;
+        showChip();
+      });
+    } else {
+      chatMsg('Sirf image ya PDF attach kar sakte ho.', 'err');
+      e.target.value = '';
+    }
+  });
+
+  function buildContent(msg){
+    var content = [];
+    if (attached){
+      if (attached.kind === 'pdf'){
+        content.push({ type:'document', source:{ type:'base64', media_type:'application/pdf', data: attached.data } });
+      } else {
+        content.push({ type:'image', source:{ type:'base64', media_type: attached.media_type, data: attached.data } });
+      }
+    }
+    content.push({ type:'text', text: buildPrompt(msg || '(no text — read the attached image/PDF)') });
+    return content;
+  }
+
   function aiParse(){
     var input = document.getElementById('aiInput');
     var btn = document.getElementById('aiSend');
     var msg = input.value.trim();
-    if (!msg) return;
+    if (!msg && !attached) return;
     var s = loadSettings();
     if (!s.apiKey){
       chatMsg('API key set nahi hai. ⚙ Settings mein Claude API key paste karo pehle.', 'err');
       closeOverlay('aiOverlay'); openOverlay('setOverlay');
       return;
     }
-    chatMsg(msg, 'user');
+    chatMsg((attached ? '📎 ' + attached.name + (msg ? '\n' : '') : '') + msg, 'user');
+    var content = buildContent(msg);
     input.value = '';
+    attached = null;
+    document.getElementById('aiFile').value = '';
+    showChip();
     btn.disabled = true;
     var thinking = chatMsg('Parsing…');
 
@@ -548,7 +656,7 @@ main{flex:1; padding:14px 14px 190px; max-width:560px; width:100%; margin:0 auto
       body: JSON.stringify({
         model: s.model || 'claude-haiku-4-5',
         max_tokens: 1000,
-        messages: [ { role: 'user', content: buildPrompt(msg) } ]
+        messages: [ { role: 'user', content: content } ]
       })
     }).then(function(res){
       return res.json().then(function(data){ return { ok: res.ok, status: res.status, data: data }; });
