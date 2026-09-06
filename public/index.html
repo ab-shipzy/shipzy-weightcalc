@@ -131,6 +131,62 @@ main{flex:1; padding:14px 14px 190px; max-width:560px; width:100%; margin:0 auto
 .chargeable .lbl small{display:block;font-size:10px;font-weight:500;color:#9fb6c6;text-transform:none;letter-spacing:0;}
 .chargeable .val{font-family:'JetBrains Mono',monospace;font-size:26px;font-weight:700;color:#fff;}
 .chargeable .val small{font-size:13px;font-weight:500;color:var(--mint);}
+/* AI assist + settings */
+.gearbtn{
+  margin-left:auto; border:1px solid rgba(255,255,255,.25); background:transparent;
+  color:#cfe0ec; border-radius:9px; width:34px; height:34px; cursor:pointer;
+  font-size:16px; line-height:1; flex-shrink:0;
+}
+.aifab{
+  position:fixed; right:14px; bottom:178px; z-index:40;
+  background:var(--mint); color:var(--navy); border:none; border-radius:999px;
+  padding:11px 18px; font-family:inherit; font-weight:800; font-size:14px;
+  box-shadow:0 4px 16px rgba(0,48,74,.35); cursor:pointer;
+}
+.overlay{
+  position:fixed; inset:0; background:rgba(0,20,32,.55); z-index:50;
+  display:none; align-items:flex-end; justify-content:center;
+}
+.overlay.open{display:flex;}
+.sheet{
+  background:var(--card); width:100%; max-width:560px;
+  border-radius:18px 18px 0 0; padding:16px 16px calc(16px + env(safe-area-inset-bottom));
+  max-height:80vh; display:flex; flex-direction:column;
+}
+.sheethead{display:flex; align-items:center; justify-content:space-between; margin-bottom:10px;}
+.sheethead h2{font-size:15px; font-weight:800;}
+.closebtn{border:none;background:#eef2f6;border-radius:8px;width:30px;height:30px;cursor:pointer;font-size:14px;color:var(--muted);}
+.aichat{flex:1; overflow-y:auto; margin-bottom:10px; min-height:60px;}
+.aimsg{
+  background:#f0f5fa; border:1px solid var(--border); border-radius:12px;
+  padding:10px 12px; font-size:13px; line-height:1.5; margin-bottom:8px;
+  white-space:pre-wrap; word-break:break-word;
+}
+.aimsg.user{background:#e7f1ff; border-color:#cfe3ff;}
+.aimsg.err{background:#fdeeee; border-color:#f5c6c8; color:var(--danger);}
+.airow{display:flex; gap:8px; align-items:flex-end;}
+.airow textarea{
+  flex:1; border:1px solid var(--border); border-radius:12px; padding:10px;
+  font-family:inherit; font-size:14px; resize:none; min-height:64px; max-height:140px;
+  outline:none; background:#fbfcfe;
+}
+.airow textarea:focus{border-color:var(--blue); background:#fff;}
+.sendbtn{
+  border:none; background:var(--blue); color:#fff; border-radius:12px;
+  padding:12px 16px; font-family:inherit; font-weight:700; font-size:14px; cursor:pointer;
+}
+.sendbtn:disabled{opacity:.5;}
+.setfield{margin-bottom:12px;}
+.setfield label{display:block;font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:5px;}
+.setfield input, .setfield select{
+  width:100%; border:1px solid var(--border); border-radius:10px; padding:11px 10px;
+  font-family:'JetBrains Mono',monospace; font-size:13px; outline:none; background:#fbfcfe;
+}
+.setfield small{display:block;font-size:11px;color:var(--muted);margin-top:5px;line-height:1.4;}
+.savebtn{
+  width:100%; border:none; background:var(--navy); color:var(--mint); border-radius:12px;
+  padding:13px; font-family:inherit; font-weight:800; font-size:14px; cursor:pointer;
+}
 </style>
 </head>
 <body>
@@ -142,6 +198,7 @@ main{flex:1; padding:14px 14px 190px; max-width:560px; width:100%; margin:0 auto
       <h1>Weight Calculator</h1>
       <small>SHIPZYCART · VOLUMETRIC</small>
     </div>
+    <button class="gearbtn" id="openSettings" title="Settings">⚙</button>
   </div>
   <div class="tabs" id="tabs">
     <button class="tab active" data-mode="cft10">10 CFT<span>÷ 2700</span></button>
@@ -177,6 +234,46 @@ main{flex:1; padding:14px 14px 190px; max-width:560px; width:100%; margin:0 auto
       <div class="lbl">Chargeable Weight<small id="rBasis">—</small></div>
       <div class="val"><span id="rCharge">0</span> <small>kg</small></div>
     </div>
+  </div>
+</div>
+
+<button class="aifab" id="openAi">✨ AI</button>
+
+<div class="overlay" id="aiOverlay">
+  <div class="sheet">
+    <div class="sheethead">
+      <h2>✨ AI Parse — paste customer message</h2>
+      <button class="closebtn" data-close="aiOverlay">✕</button>
+    </div>
+    <div class="aichat" id="aiChat">
+      <div class="aimsg">Customer ka WhatsApp message yahan paste karo — jaise "3 boxes 25kg each 45x40x30" — main padh ke boxes fill kar dunga aur chargeable weight nikal dunga.</div>
+    </div>
+    <div class="airow">
+      <textarea id="aiInput" placeholder="Paste message here..."></textarea>
+      <button class="sendbtn" id="aiSend">Parse</button>
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="setOverlay">
+  <div class="sheet">
+    <div class="sheethead">
+      <h2>⚙ Settings</h2>
+      <button class="closebtn" data-close="setOverlay">✕</button>
+    </div>
+    <div class="setfield">
+      <label>Claude API Key</label>
+      <input type="password" id="apiKey" placeholder="sk-ant-api03-..." autocomplete="off">
+      <small>console.anthropic.com se key banao. Key sirf is device ke browser mein save hoti hai (localStorage) — kisi server pe nahi jaati, calls seedha Anthropic ko.</small>
+    </div>
+    <div class="setfield">
+      <label>Model</label>
+      <select id="apiModel">
+        <option value="claude-haiku-4-5">Haiku 4.5 — fast &amp; cheap (default)</option>
+        <option value="claude-sonnet-4-6">Sonnet 4.6 — smarter</option>
+      </select>
+    </div>
+    <button class="savebtn" id="saveSettings">Save</button>
   </div>
 </div>
 
@@ -328,6 +425,167 @@ main{flex:1; padding:14px 14px 190px; max-width:560px; width:100%; margin:0 auto
     var last = cards[cards.length-1];
     if (last && typeof last.scrollIntoView === 'function') last.scrollIntoView({behavior:'smooth', block:'center'});
   });
+
+  // ---------- Settings ----------
+  var SETTINGS_KEY = 'shipzy-weightcalc-settings';
+  function loadSettings(){
+    try { return JSON.parse(localStorage.getItem(SETTINGS_KEY)) || {}; } catch(e){ return {}; }
+  }
+  function saveSettings(s){
+    try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(s)); } catch(e){}
+  }
+  function openOverlay(id){ document.getElementById(id).classList.add('open'); }
+  function closeOverlay(id){ document.getElementById(id).classList.remove('open'); }
+
+  document.getElementById('openSettings').addEventListener('click', function(){
+    var s = loadSettings();
+    document.getElementById('apiKey').value = s.apiKey || '';
+    document.getElementById('apiModel').value = s.model || 'claude-haiku-4-5';
+    openOverlay('setOverlay');
+  });
+  document.getElementById('saveSettings').addEventListener('click', function(){
+    saveSettings({
+      apiKey: document.getElementById('apiKey').value.trim(),
+      model: document.getElementById('apiModel').value
+    });
+    closeOverlay('setOverlay');
+  });
+  var closers = document.querySelectorAll('[data-close]');
+  for (var ci=0; ci<closers.length; ci++){
+    closers[ci].addEventListener('click', function(e){
+      closeOverlay(e.target.getAttribute('data-close'));
+    });
+  }
+  document.getElementById('openAi').addEventListener('click', function(){ openOverlay('aiOverlay'); });
+
+  // ---------- AI parse ----------
+  var MODE_LABEL = { cft10: '10 CFT (÷2700)', cft6: '6 CFT (÷4500)', air: 'Air Dom/Intl (÷5000)' };
+
+  function chatMsg(text, cls){
+    var d = document.createElement('div');
+    d.className = 'aimsg' + (cls ? ' ' + cls : '');
+    d.textContent = text;
+    var chat = document.getElementById('aiChat');
+    chat.appendChild(d);
+    chat.scrollTop = chat.scrollHeight;
+    return d;
+  }
+
+  function buildPrompt(msg){
+    return 'You extract shipment box data from messy customer messages (often Hinglish WhatsApp texts).\n' +
+      'Message:\n"""\n' + msg + '\n"""\n\n' +
+      'Extract every distinct box type. Respond with ONLY a JSON object, no markdown, no explanation:\n' +
+      '{"unit":"cm|in|ft|m","boxes":[{"qty":N,"weight_kg":N,"l":N,"w":N,"h":N}],"mode":"cft10|cft6|air|null","note":"one short line: anything ambiguous or assumed"}\n' +
+      'Rules:\n' +
+      '- unit: the unit the DIMENSIONS are given in. If not stated, guess: values > 25 are usually cm, small values (<=25) with no unit are usually inches. State your assumption in note.\n' +
+      '- weight_kg: per-box actual weight in kg. Convert if given in grams/lbs. If a TOTAL weight is given for multiple boxes, divide by qty and say so in note. If missing, use 0.\n' +
+      '- qty: number of boxes of that type, default 1.\n' +
+      '- l,w,h: numeric dimensions of one box.\n' +
+      '- mode: only if message clearly indicates air/international/express courier -> "air"; else null.\n' +
+      '- All numbers must be plain numbers, not strings.';
+  }
+
+  function applyParsed(p){
+    if (!p || Object.prototype.toString.call(p.boxes) !== '[object Array]' || !p.boxes.length) return null;
+    var unitMap = { cm:'cm', in:'in', inch:'in', inches:'in', ft:'ft', feet:'ft', m:'m', meter:'m', meters:'m' };
+    var u = unitMap[String(p.unit || '').toLowerCase()] || 'cm';
+    state.unit = u;
+    var us = document.querySelectorAll('.unit');
+    for (var i=0;i<us.length;i++) us[i].classList.toggle('active', us[i].getAttribute('data-unit') === u);
+    if (p.mode && DIVISORS[p.mode]){
+      state.mode = p.mode;
+      var tabs = document.querySelectorAll('.tab');
+      for (var t=0;t<tabs.length;t++) tabs[t].classList.toggle('active', tabs[t].getAttribute('data-mode') === p.mode);
+    }
+    var boxes = [];
+    for (var b=0; b<p.boxes.length && b<20; b++){
+      var box = p.boxes[b] || {};
+      boxes.push({
+        qty: Math.max(1, Math.round(+box.qty || 1)),
+        wt: (+box.weight_kg > 0) ? String(+box.weight_kg) : '',
+        l: (+box.l > 0) ? String(+box.l) : '',
+        w: (+box.w > 0) ? String(+box.w) : '',
+        h: (+box.h > 0) ? String(+box.h) : ''
+      });
+    }
+    if (!boxes.length) return null;
+    state.boxes = boxes;
+    render();
+    return {
+      unit: u,
+      mode: state.mode,
+      charge: document.getElementById('rCharge').textContent,
+      actual: document.getElementById('rActual').textContent,
+      vol: document.getElementById('rVol').textContent,
+      boxes: document.getElementById('rBoxes').textContent
+    };
+  }
+
+  function aiParse(){
+    var input = document.getElementById('aiInput');
+    var btn = document.getElementById('aiSend');
+    var msg = input.value.trim();
+    if (!msg) return;
+    var s = loadSettings();
+    if (!s.apiKey){
+      chatMsg('API key set nahi hai. ⚙ Settings mein Claude API key paste karo pehle.', 'err');
+      closeOverlay('aiOverlay'); openOverlay('setOverlay');
+      return;
+    }
+    chatMsg(msg, 'user');
+    input.value = '';
+    btn.disabled = true;
+    var thinking = chatMsg('Parsing…');
+
+    fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': s.apiKey,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true'
+      },
+      body: JSON.stringify({
+        model: s.model || 'claude-haiku-4-5',
+        max_tokens: 1000,
+        messages: [ { role: 'user', content: buildPrompt(msg) } ]
+      })
+    }).then(function(res){
+      return res.json().then(function(data){ return { ok: res.ok, status: res.status, data: data }; });
+    }).then(function(r){
+      thinking.remove();
+      if (!r.ok){
+        var apiErr = (r.data && r.data.error && r.data.error.message) || ('HTTP ' + r.status);
+        chatMsg('API error: ' + apiErr + (r.status === 401 ? ' — Settings mein key check karo.' : ''), 'err');
+        return;
+      }
+      var text = '';
+      var content = (r.data && r.data.content) || [];
+      for (var i=0;i<content.length;i++) if (content[i].type === 'text') text += content[i].text;
+      var parsed;
+      try {
+        parsed = JSON.parse(text.replace(/```json|```/g, '').trim());
+      } catch(e){
+        chatMsg('Response samajh nahi aaya — message thoda saaf karke dubara try karo.', 'err');
+        return;
+      }
+      var sum = applyParsed(parsed);
+      if (!sum){
+        chatMsg('Is message mein box/dimension data nahi mila. Weight aur dimensions wala text paste karo.', 'err');
+        return;
+      }
+      var lines = 'Done ✅ ' + sum.boxes + ' box(es) · ' + MODE_LABEL[sum.mode] + ' · unit: ' + sum.unit + '\n' +
+        'Actual: ' + sum.actual + ' | Volumetric: ' + sum.vol + '\n' +
+        'CHARGEABLE: ' + sum.charge + ' kg';
+      if (parsed.note) lines += '\nNote: ' + parsed.note;
+      lines += '\nBoxes neeche fill ho gaye — verify kar lena.';
+      chatMsg(lines);
+    }).catch(function(err){
+      thinking.remove();
+      chatMsg('Network error: ' + err.message, 'err');
+    }).then(function(){ btn.disabled = false; });
+  }
+  document.getElementById('aiSend').addEventListener('click', aiParse);
 
   render();
 
