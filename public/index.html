@@ -504,21 +504,22 @@ main{flex:1; padding:14px 14px 190px; max-width:560px; width:100%; margin:0 auto
     document.getElementById('sumMode').textContent = MODE_LABEL[state.mode];
     var body = document.getElementById('sumBody');
     body.innerHTML = '';
-    var txt = 'ShipzyCart — Chargeable Weight\nService: ' + MODE_LABEL[state.mode] + '\n';
+    var txt = '*ShipzyCart — Chargeable Weight*\n_Service: ' + MODE_LABEL[state.mode] + '_\n';
     lines.forEach(function(L){
       var tr = document.createElement('tr');
       tr.innerHTML = '<td>' + L.n + '</td><td>' + L.qty + '</td><td>' + (L.wt ? L.wt + ' kg' : '—') +
         '</td><td>' + L.dims + '</td><td>' + L.vol.toFixed(2) + '</td><td>' + Math.round(L.chg) + ' kg</td>';
       body.appendChild(tr);
-      txt += L.n + ') ' + L.qty + ' box × ' + (L.wt || 0) + ' kg | ' + L.dims +
-        ' | Vol ' + L.vol.toFixed(2) + ' kg | Chg ' + Math.round(L.chg) + ' kg\n';
+      txt += '\n*Box ' + L.n + ':* ' + L.qty + ' box × ' + (L.wt || 0) + ' kg\n' +
+        '📦 ' + L.dims + '\n' +
+        'Vol: ' + L.vol.toFixed(2) + ' kg → Chg: *' + Math.round(L.chg) + ' kg*\n';
     });
     document.getElementById('sumActual').textContent = actual.toFixed(2) + ' kg';
     document.getElementById('sumVol').textContent = vol.toFixed(2) + ' kg';
     document.getElementById('sumCbm').textContent = cbm.toFixed(3);
     document.getElementById('sumCharge').textContent = chargeRounded.toFixed(0);
-    txt += 'Total Actual: ' + actual.toFixed(2) + ' kg\nTotal Volumetric: ' + vol.toFixed(2) + ' kg\nTotal CBM: ' + cbm.toFixed(3) +
-      '\nTOTAL CHARGEABLE: ' + chargeRounded.toFixed(0) + ' kg';
+    txt += '\nActual: ' + actual.toFixed(2) + ' kg\nVolumetric: ' + vol.toFixed(2) + ' kg\nCBM: ' + cbm.toFixed(3) +
+      '\n\n✅ *TOTAL CHARGEABLE: ' + chargeRounded.toFixed(0) + ' kg*';
     lastSummaryText = txt;
   }
 
