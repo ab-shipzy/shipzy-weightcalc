@@ -93,6 +93,11 @@ main{flex:1; padding:14px 14px 190px; max-width:560px; width:100%; margin:0 auto
   color:var(--text); background:#fbfcfe; outline:none; text-align:center;
 }
 .field input:focus{border-color:var(--blue); background:#fff;}
+.dimunit{
+  width:100%; margin-top:4px; border:1px solid var(--border); border-radius:7px;
+  padding:5px 4px; font-family:'JetBrains Mono',monospace; font-size:11.5px;
+  color:var(--muted); background:#fbfcfe; outline:none; text-align:center; text-align-last:center;
+}
 .boxstat{
   margin-top:10px; padding-top:9px; border-top:1px dashed var(--border);
   display:flex; justify-content:space-between; font-size:11.5px; color:var(--muted);
@@ -361,8 +366,11 @@ main{flex:1; padding:14px 14px 190px; max-width:560px; width:100%; margin:0 auto
   };
 
   function newBox(){
-    var last = (state && state.boxes && state.boxes.length) ? state.boxes[state.boxes.length-1].unit : 'cm';
-    return { qty: 1, wt: '', l: '', w: '', h: '', unit: last || 'cm' };
+    var lb = (state && state.boxes && state.boxes.length) ? state.boxes[state.boxes.length-1] : null;
+    return {
+      qty: 1, wt: '', l: '', w: '', h: '',
+      lu: (lb && lb.lu) || 'cm', wu: (lb && lb.wu) || 'cm', hu: (lb && lb.hu) || 'cm'
+    };
   }
 
   function num(v){
@@ -372,8 +380,9 @@ main{flex:1; padding:14px 14px 190px; max-width:560px; width:100%; margin:0 auto
 
 
   function calcBox(b){
-    var f = TO_CM[b.unit] || 1;
-    var l = num(b.l)*f, w = num(b.w)*f, h = num(b.h)*f;
+    var l = num(b.l) * (TO_CM[b.lu] || 1),
+        w = num(b.w) * (TO_CM[b.wu] || 1),
+        h = num(b.h) * (TO_CM[b.hu] || 1);
     var qty = Math.max(1, Math.round(num(b.qty)) || 1);
     var volPer = (l && w && h) ? (l*w*h) / DIVISORS[state.mode] : 0;
     var cbmPer = (l*w*h) / 1000000;
@@ -402,14 +411,15 @@ main{flex:1; padding:14px 14px 190px; max-width:560px; width:100%; margin:0 auto
           field(i,'qty','No. of Boxes', b.qty, '1', 'numeric') +
           field(i,'wt','Actual Wt / box (kg)', b.wt, '0.0', 'decimal') +
         '</div>' +
-        '<div class="field" style="margin-bottom:8px;"><label>Dimensions in</label>' +
+        '<div class="field" style="margin-bottom:8px;"><label>Dimensions in (sab pe lagao)</label>' +
           '<div class="units">' + ['cm','in','ft','m'].map(function(u){
-            return '<button type="button" class="unit'+(b.unit===u?' active':'')+'" data-i="'+i+'" data-boxunit="'+u+'">'+u+'</button>';
+            var all = (b.lu===u && b.wu===u && b.hu===u);
+            return '<button type="button" class="unit'+(all?' active':'')+'" data-i="'+i+'" data-boxunit="'+u+'">'+u+'</button>';
           }).join('') + '</div></div>' +
         '<div class="grid3">' +
-          field(i,'l','Length ('+b.unit+')', b.l, '0', 'decimal') +
-          field(i,'w','Width ('+b.unit+')', b.w, '0', 'decimal') +
-          field(i,'h','Height ('+b.unit+')', b.h, '0', 'decimal') +
+          dimField(i,'l','lu','Length', b) +
+          dimField(i,'w','wu','Width', b) +
+          dimField(i,'h','hu','Height', b) +
         '</div>' +
         '<div class="boxstat">' +
           '<span>Vol. wt / box: <b>' + c.volPer.toFixed(2) + ' kg</b></span>' +
@@ -424,6 +434,15 @@ main{flex:1; padding:14px 14px 190px; max-width:560px; width:100%; margin:0 auto
   function field(i, key, label, val, ph, mode){
     return '<div class="field"><label>'+label+'</label>' +
       '<input type="text" inputmode="'+mode+'" data-i="'+i+'" data-k="'+key+'" value="'+val+'" placeholder="'+ph+'"></div>';
+  }
+
+  function dimField(i, key, ukey, label, b){
+    var opts = ['cm','in','ft','m'].map(function(u){
+      return '<option value="'+u+'"'+(b[ukey]===u?' selected':'')+'>'+u+'</option>';
+    }).join('');
+    return '<div class="field"><label>'+label+'</label>' +
+      '<input type="text" inputmode="decimal" data-i="'+i+'" data-k="'+key+'" value="'+b[key]+'" placeholder="0">' +
+      '<select class="dimunit" data-i="'+i+'" data-k="'+ukey+'">'+opts+'</select></div>';
   }
 
   function bindInputs(){
@@ -448,7 +467,16 @@ main{flex:1; padding:14px 14px 190px; max-width:560px; width:100%; margin:0 auto
     for (var u=0; u<ubtns.length; u++){
       ubtns[u].addEventListener('click', function(e){
         var i = +e.target.getAttribute('data-i');
-        state.boxes[i].unit = e.target.getAttribute('data-boxunit');
+        var un = e.target.getAttribute('data-boxunit');
+        state.boxes[i].lu = un; state.boxes[i].wu = un; state.boxes[i].hu = un;
+        render();
+      });
+    }
+    var dsel = document.querySelectorAll('#boxes .dimunit');
+    for (var s=0; s<dsel.length; s++){
+      dsel[s].addEventListener('change', function(e){
+        var i = +e.target.getAttribute('data-i');
+        state.boxes[i][e.target.getAttribute('data-k')] = e.target.value;
         render();
       });
     }
@@ -474,7 +502,7 @@ main{flex:1; padding:14px 14px 190px; max-width:560px; width:100%; margin:0 auto
           n: idx + 1,
           qty: c.qty,
           wt: num(b.wt),
-          dims: (num(b.l)||0) + '×' + (num(b.w)||0) + '×' + (num(b.h)||0) + ' ' + (b.unit || 'cm'),
+          dims: fmtDims(b),
           vol: c.vol,
           chg: Math.max(c.actual, c.vol)
         });
@@ -490,6 +518,13 @@ main{flex:1; padding:14px 14px 190px; max-width:560px; width:100%; margin:0 auto
     document.getElementById('rCharge').textContent = chargeRounded.toFixed(0);
     document.getElementById('rBasis').textContent = basis;
     renderSummary(lines, actual, vol, cbm, chargeRounded);
+  }
+
+  function fmtDims(b){
+    var lu = b.lu || 'cm', wu = b.wu || 'cm', hu = b.hu || 'cm';
+    var L = num(b.l)||0, W = num(b.w)||0, H = num(b.h)||0;
+    if (lu === wu && wu === hu) return L + '×' + W + '×' + H + ' ' + lu;
+    return L + lu + ' × ' + W + wu + ' × ' + H + hu;
   }
 
   var lastSummaryText = '';
@@ -619,8 +654,8 @@ main{flex:1; padding:14px 14px 190px; max-width:560px; width:100%; margin:0 auto
       'User message (may be any language — Hindi, Hinglish, Kannada, etc. — text, voice transcript, or attached image/PDF):\n"""\n' + msg + '\n"""\n\n' +
       'Decide the intent:\n' +
       'A) User is GIVING shipment box data (counts, weights, dimensions) -> respond ONLY:\n' +
-      '{"action":"fill","boxes":[{"qty":N,"weight_kg":N,"l":N,"w":N,"h":N,"unit":"cm|in|ft|m"}],"mode":"cft10|cft6|air|null","note":"one short line: anything ambiguous or assumed"}\n' +
-      'Rules for fill: unit = the unit THAT box type\'s dimensions are given in — different box types may use different units (e.g. one in cm, another in inches); set each box\'s unit separately. If unstated: values > 25 likely cm, <= 25 likely inches; note the assumption. weight_kg per box (convert from g/lbs; divide totals by qty and note it; 0 if missing). qty default 1. mode only if clearly indicated (air/international/express -> "air") else null. Plain numbers only.\n' +
+      '{"action":"fill","boxes":[{"qty":N,"weight_kg":N,"l":N,"w":N,"h":N,"unit":"cm|in|ft|m","l_unit":"cm|in|ft|m (optional)","w_unit":"(optional)","h_unit":"(optional)"}],"mode":"cft10|cft6|air|null","note":"one short line: anything ambiguous or assumed"}\n' +
+      'Rules for fill: unit = the unit that box\'s dimensions are given in; different box types may use different units. If ONE box mixes units across its own L/W/H (e.g. "1 ft lamba, 30 cm chauda, 12 inch uncha"), set l_unit/w_unit/h_unit individually (they override unit). If unstated: values > 25 likely cm, <= 25 likely inches; note the assumption. weight_kg per box (convert from g/lbs; divide totals by qty and note it; 0 if missing). qty default 1. mode only if clearly indicated (air/international/express -> "air") else null. Plain numbers only.\n' +
       'B) User is ASKING a question — e.g. what box dimensions keep volumetric weight at/under N kg, why is chargeable higher, unit conversions -> respond ONLY:\n' +
       '{"action":"answer","answer":"short practical answer in the user\'s language. For dimension questions: compute allowed volume = N kg x divisor (use the currently selected service unless they name another), then give 2-3 practical box options (a cube plus common rectangular ratios) in the unit the user mentions (default cm), values rounded to whole numbers. Show the volume budget in cm3 briefly."}\n' +
       'No markdown, no text outside the JSON.';
@@ -677,20 +712,25 @@ main{flex:1; padding:14px 14px 190px; max-width:560px; width:100%; margin:0 auto
     var boxes = [];
     for (var b=0; b<p.boxes.length && b<20; b++){
       var box = p.boxes[b] || {};
+      var bu = unitMap[String(box.unit || '').toLowerCase()] || fallbackU;
       boxes.push({
         qty: Math.max(1, Math.round(+box.qty || 1)),
         wt: (+box.weight_kg > 0) ? String(+box.weight_kg) : '',
         l: (+box.l > 0) ? String(+box.l) : '',
         w: (+box.w > 0) ? String(+box.w) : '',
         h: (+box.h > 0) ? String(+box.h) : '',
-        unit: unitMap[String(box.unit || '').toLowerCase()] || fallbackU
+        lu: unitMap[String(box.l_unit || '').toLowerCase()] || bu,
+        wu: unitMap[String(box.w_unit || '').toLowerCase()] || bu,
+        hu: unitMap[String(box.h_unit || '').toLowerCase()] || bu
       });
     }
     if (!boxes.length) return null;
     state.boxes = boxes;
     render();
     var uniq = [];
-    for (var q=0; q<boxes.length; q++) if (uniq.indexOf(boxes[q].unit) === -1) uniq.push(boxes[q].unit);
+    for (var q=0; q<boxes.length; q++){
+      [boxes[q].lu, boxes[q].wu, boxes[q].hu].forEach(function(x){ if (uniq.indexOf(x) === -1) uniq.push(x); });
+    }
     return {
       unit: uniq.join('/'),
       mode: state.mode,
