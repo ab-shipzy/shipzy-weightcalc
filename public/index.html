@@ -187,6 +187,13 @@ main{flex:1; padding:14px 14px 190px; max-width:560px; width:100%; margin:0 auto
   width:100%; border:none; background:var(--navy); color:var(--mint); border-radius:12px;
   padding:13px; font-family:inherit; font-weight:800; font-size:14px; cursor:pointer;
 }
+.boxpreview{
+  display:flex; justify-content:center; align-items:center;
+  margin-top:10px; padding:8px 0 2px;
+}
+.boxpreview svg{max-width:100%; height:auto;}
+.dimlbl{font-family:'JetBrains Mono',monospace; font-size:11px; font-weight:700; fill:var(--navy);}
+.qtybadge{font-family:'JetBrains Mono',monospace; font-size:11px; font-weight:700; fill:#fff;}
 </style>
 </head>
 <body>
@@ -305,6 +312,54 @@ main{flex:1; padding:14px 14px 190px; max-width:560px; width:100%; margin:0 auto
     return isFinite(n) && n > 0 ? n : 0;
   }
 
+  // isometric box preview SVG with dimension labels
+  function boxSVG(b, qty){
+    var L = num(b.l), W = num(b.w), H = num(b.h);
+    var VW = 260, VH = 170;
+    if (!L || !W || !H){
+      return '<svg viewBox="0 0 '+VW+' '+VH+'" width="'+VW+'" height="'+VH+'">' +
+        '<rect x="70" y="35" width="120" height="100" rx="10" fill="none" stroke="#c4d2de" stroke-width="2" stroke-dasharray="6 5"/>' +
+        '<text x="130" y="90" text-anchor="middle" class="dimlbl" fill="#8fa8ba">L × W × H daalo</text></svg>';
+    }
+    // normalize so shape fits
+    var m = Math.max(L, W, H);
+    var l = L/m, w = W/m, h = H/m;
+    var cos = 0.866, sin = 0.5;
+    // required extents at unit scale
+    var exW = (l + w) * cos, exH = (l + w) * sin + h;
+    var s = Math.min(150 / exW, 105 / exH);
+    var lx = l*s, wx = w*s, hx = h*s;
+    // anchor: bottom-front vertex
+    var pad = 34;
+    var x0 = pad + wx*cos, y0 = VH - 30;
+    function pt(dl, dw, dh){
+      return [ x0 + dl*cos - dw*cos, y0 + dl*sin + dw*sin - dh ];
+    }
+    function poly(pts, fill, op){
+      var d = pts.map(function(p){ return p[0].toFixed(1)+','+p[1].toFixed(1); }).join(' ');
+      return '<polygon points="'+d+'" fill="'+fill+'" fill-opacity="'+op+'" stroke="#00304a" stroke-width="1.2" stroke-linejoin="round"/>';
+    }
+    var P000=pt(0,0,0), PL00=pt(lx,0,0), P0W0=pt(0,wx,0), P00H=pt(0,0,hx),
+        PL0H=pt(lx,0,hx), P0WH=pt(0,wx,hx), PLWH=pt(lx,wx,hx);
+    var svg = '<svg viewBox="0 0 '+VW+' '+VH+'" width="'+VW+'" height="'+VH+'">';
+    svg += poly([P00H, PL0H, PLWH, P0WH], '#43edd4', '0.9');   // top
+    svg += poly([P000, PL00, PL0H, P00H], '#0074ff', '0.85');  // right (L)
+    svg += poly([P000, P0W0, P0WH, P00H], '#0074ff', '0.55');  // left (W)
+    // labels: L bottom-right edge, W bottom-left edge, H vertical edge
+    var mid = function(a,b){ return [(a[0]+b[0])/2, (a[1]+b[1])/2]; };
+    var mL = mid(P000, PL00), mW = mid(P000, P0W0), mH = mid(PL00, PL0H);
+    svg += '<text x="'+(mL[0]+6)+'" y="'+(mL[1]+16)+'" class="dimlbl" text-anchor="middle">L '+L+'</text>';
+    svg += '<text x="'+(mW[0]-6)+'" y="'+(mW[1]+16)+'" class="dimlbl" text-anchor="end">W '+W+'</text>';
+    svg += '<text x="'+(mH[0]+8)+'" y="'+(mH[1]+4)+'" class="dimlbl">H '+H+'</text>';
+    svg += '<text x="'+(VW-8)+'" y="16" class="dimlbl" text-anchor="end" fill="#61758a">'+state.unit+'</text>';
+    if (qty > 1){
+      svg += '<circle cx="22" cy="20" r="15" fill="#00304a"/>' +
+        '<text x="22" y="24" text-anchor="middle" class="qtybadge">×'+qty+'</text>';
+    }
+    svg += '</svg>';
+    return svg;
+  }
+
   function calcBox(b){
     var f = TO_CM[state.unit];
     var l = num(b.l)*f, w = num(b.w)*f, h = num(b.h)*f;
@@ -341,6 +396,7 @@ main{flex:1; padding:14px 14px 190px; max-width:560px; width:100%; margin:0 auto
           field(i,'w','Width ('+state.unit+')', b.w, '0', 'decimal') +
           field(i,'h','Height ('+state.unit+')', b.h, '0', 'decimal') +
         '</div>' +
+        '<div class="boxpreview">' + boxSVG(b, c.qty) + '</div>' +
         '<div class="boxstat">' +
           '<span>Vol. wt / box: <b>' + c.volPer.toFixed(2) + ' kg</b></span>' +
           '<span>Line vol: <b>' + c.vol.toFixed(2) + ' kg</b></span>' +
@@ -383,6 +439,8 @@ main{flex:1; padding:14px 14px 190px; max-width:560px; width:100%; margin:0 auto
     var bs = cards[i].querySelectorAll('.boxstat b');
     bs[0].textContent = c.volPer.toFixed(2) + ' kg';
     bs[1].textContent = c.vol.toFixed(2) + ' kg';
+    var pv = cards[i].querySelector('.boxpreview');
+    if (pv) pv.innerHTML = boxSVG(state.boxes[i], c.qty);
   }
 
   function totals(){
