@@ -1,4 +1,4 @@
-var CACHE = 'shipzy-weightcalc-v5';
+var CACHE = 'shipzy-weightcalc-v6';
 var ASSETS = ['/', '/index.html', '/manifest.json'];
 self.addEventListener('install', function(e){
   e.waitUntil(caches.open(CACHE).then(function(c){ return c.addAll(ASSETS); }));

@@ -261,6 +261,7 @@ main{flex:1; padding:14px 14px 190px; max-width:560px; width:100%; margin:0 auto
     </div>
     <div class="airow">
       <button class="sendbtn" id="aiAttach" style="background:#eef2f6;color:var(--navy);padding:12px 13px;" title="Attach image / PDF">📎</button>
+      <button class="sendbtn" id="aiMic" style="background:#eef2f6;color:var(--navy);padding:12px 13px;" title="Voice input">🎤</button>
       <input type="file" id="aiFile" accept="image/*,application/pdf" style="display:none;">
       <textarea id="aiInput" placeholder="Paste message here... (ya sirf photo/PDF attach karo)"></textarea>
       <button class="sendbtn" id="aiSend">Parse</button>
@@ -285,6 +286,21 @@ main{flex:1; padding:14px 14px 190px; max-width:560px; width:100%; margin:0 auto
         <option value="claude-haiku-4-5">Haiku 4.5 — fast &amp; cheap (default)</option>
         <option value="claude-sonnet-4-6">Sonnet 4.6 — smarter</option>
       </select>
+    </div>
+    <div class="setfield">
+      <label>Voice Language</label>
+      <select id="voiceLang">
+        <option value="hi-IN">Hindi / Hinglish (India)</option>
+        <option value="en-IN">English (India)</option>
+        <option value="kn-IN">Kannada</option>
+        <option value="ta-IN">Tamil</option>
+        <option value="te-IN">Telugu</option>
+        <option value="mr-IN">Marathi</option>
+        <option value="gu-IN">Gujarati</option>
+        <option value="bn-IN">Bengali</option>
+        <option value="en-US">English (US)</option>
+      </select>
+      <small>🎤 bolne ki language. Parsing kisi bhi language mein ho jati hai.</small>
     </div>
     <button class="savebtn" id="saveSettings">Save</button>
   </div>
@@ -499,18 +515,23 @@ main{flex:1; padding:14px 14px 190px; max-width:560px; width:100%; margin:0 auto
     try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(s)); } catch(e){}
   }
   function openOverlay(id){ document.getElementById(id).classList.add('open'); }
-  function closeOverlay(id){ document.getElementById(id).classList.remove('open'); }
+  function closeOverlay(id){
+    document.getElementById(id).classList.remove('open');
+    if (id === 'aiOverlay' && typeof stopRecog === 'function') stopRecog();
+  }
 
   document.getElementById('openSettings').addEventListener('click', function(){
     var s = loadSettings();
     document.getElementById('apiKey').value = s.apiKey || '';
     document.getElementById('apiModel').value = s.model || 'claude-haiku-4-5';
+    document.getElementById('voiceLang').value = s.voiceLang || 'hi-IN';
     openOverlay('setOverlay');
   });
   document.getElementById('saveSettings').addEventListener('click', function(){
     saveSettings({
       apiKey: document.getElementById('apiKey').value.trim(),
-      model: document.getElementById('apiModel').value
+      model: document.getElementById('apiModel').value,
+      voiceLang: document.getElementById('voiceLang').value
     });
     closeOverlay('setOverlay');
   });
@@ -536,18 +557,56 @@ main{flex:1; padding:14px 14px 190px; max-width:560px; width:100%; margin:0 auto
   }
 
   function buildPrompt(msg){
-    return 'You extract shipment box data from messy customer messages (often Hinglish WhatsApp texts). The data may be in the text below AND/OR in an attached image (photo, chat screenshot, packing list) or PDF — read whichever is present.\n' +
-      'Message:\n"""\n' + msg + '\n"""\n\n' +
-      'Extract every distinct box type. Respond with ONLY a JSON object, no markdown, no explanation:\n' +
-      '{"unit":"cm|in|ft|m","boxes":[{"qty":N,"weight_kg":N,"l":N,"w":N,"h":N}],"mode":"cft10|cft6|air|null","note":"one short line: anything ambiguous or assumed"}\n' +
-      'Rules:\n' +
-      '- unit: the unit the DIMENSIONS are given in. If not stated, guess: values > 25 are usually cm, small values (<=25) with no unit are usually inches. State your assumption in note.\n' +
-      '- weight_kg: per-box actual weight in kg. Convert if given in grams/lbs. If a TOTAL weight is given for multiple boxes, divide by qty and say so in note. If missing, use 0.\n' +
-      '- qty: number of boxes of that type, default 1.\n' +
-      '- l,w,h: numeric dimensions of one box.\n' +
-      '- mode: only if message clearly indicates air/international/express courier -> "air"; else null.\n' +
-      '- All numbers must be plain numbers, not strings.';
+    return 'You are a logistics volumetric-weight assistant for a freight company.\n' +
+      'CONTEXT: currently selected service = ' + MODE_LABEL[state.mode] + '. Formula: volumetric weight (kg) = L x W x H in cm / ' + DIVISORS[state.mode] + '. Currently selected dimension unit = ' + state.unit + '. Divisors: 10 CFT = 2700, 6 CFT = 4500, air = 5000. Chargeable = max(actual, volumetric).\n' +
+      'User message (may be any language — Hindi, Hinglish, Kannada, etc. — text, voice transcript, or attached image/PDF):\n"""\n' + msg + '\n"""\n\n' +
+      'Decide the intent:\n' +
+      'A) User is GIVING shipment box data (counts, weights, dimensions) -> respond ONLY:\n' +
+      '{"action":"fill","unit":"cm|in|ft|m","boxes":[{"qty":N,"weight_kg":N,"l":N,"w":N,"h":N}],"mode":"cft10|cft6|air|null","note":"one short line: anything ambiguous or assumed"}\n' +
+      'Rules for fill: unit = the unit the dimensions are given in (if unstated: values > 25 likely cm, <= 25 likely inches; note the assumption). weight_kg per box (convert from g/lbs; divide totals by qty and note it; 0 if missing). qty default 1. mode only if clearly indicated (air/international/express -> "air") else null. Plain numbers only.\n' +
+      'B) User is ASKING a question — e.g. what box dimensions keep volumetric weight at/under N kg, why is chargeable higher, unit conversions -> respond ONLY:\n' +
+      '{"action":"answer","answer":"short practical answer in the user\'s language. For dimension questions: compute allowed volume = N kg x divisor (use the currently selected service unless they name another), then give 2-3 practical box options (a cube plus common rectangular ratios), converted to the currently selected unit, values rounded to whole numbers. Show the volume budget in cm3 briefly."}\n' +
+      'No markdown, no text outside the JSON.';
   }
+
+  // ---------- Voice input ----------
+  var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  var recog = null, recording = false;
+  function stopRecog(){
+    recording = false;
+    document.getElementById('aiMic').style.background = '#eef2f6';
+    if (recog){ try { recog.stop(); } catch(e){} recog = null; }
+  }
+  document.getElementById('aiMic').addEventListener('click', function(){
+    if (recording){ stopRecog(); return; }
+    if (!SR){
+      chatMsg('Is browser mein voice input support nahi hai — Chrome use karo.', 'err');
+      return;
+    }
+    var s = loadSettings();
+    recog = new SR();
+    recog.lang = s.voiceLang || 'hi-IN';
+    recog.continuous = true;
+    recog.interimResults = true;
+    var base = document.getElementById('aiInput').value;
+    recog.onresult = function(e){
+      var finalT = '', interim = '';
+      for (var i=0; i<e.results.length; i++){
+        if (e.results[i].isFinal) finalT += e.results[i][0].transcript + ' ';
+        else interim += e.results[i][0].transcript;
+      }
+      document.getElementById('aiInput').value = (base ? base + ' ' : '') + finalT + interim;
+    };
+    recog.onerror = function(e){
+      stopRecog();
+      if (e.error === 'not-allowed') chatMsg('Mic permission do — browser ne block kiya hai.', 'err');
+      else if (e.error !== 'aborted') chatMsg('Voice error: ' + e.error, 'err');
+    };
+    recog.onend = function(){ stopRecog(); };
+    recording = true;
+    document.getElementById('aiMic').style.background = '#fdd';
+    try { recog.start(); } catch(e){ stopRecog(); }
+  });
 
   function applyParsed(p){
     if (!p || Object.prototype.toString.call(p.boxes) !== '[object Array]' || !p.boxes.length) return null;
@@ -733,6 +792,10 @@ main{flex:1; padding:14px 14px 190px; max-width:560px; width:100%; margin:0 auto
         parsed = JSON.parse(text.replace(/```json|```/g, '').trim());
       } catch(e){
         chatMsg('Response samajh nahi aaya — message thoda saaf karke dubara try karo.', 'err');
+        return;
+      }
+      if (parsed && parsed.action === 'answer'){
+        chatMsg(parsed.answer || 'Koi jawab nahi mila.');
         return;
       }
       var sum = applyParsed(parsed);
