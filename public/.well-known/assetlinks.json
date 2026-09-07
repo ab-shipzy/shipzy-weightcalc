@@ -1,0 +1,8 @@
+[{
+      "relation": ["delegate_permission/common.handle_all_urls"],
+      "target": {
+        "namespace": "android_app",
+        "package_name": "in.shipzy.weightcalc",
+        "sha256_cert_fingerprints": ["71:F2:77:DA:F3:64:BD:53:87:51:D7:18:CD:70:21:38:22:BF:20:4C:FA:A4:F0:39:C3:D3:BE:29:9D:BB:3A:FF"]
+      }
+    }]

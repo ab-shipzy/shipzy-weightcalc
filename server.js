@@ -33,7 +33,11 @@ app.post('/api/parse', function(req, res){
   });
 });
 
-app.use(express.static(path.join(__dirname, 'public')));
+app.get('/.well-known/assetlinks.json', function(req, res){
+  res.type('application/json');
+  res.sendFile(path.join(__dirname, 'public', '.well-known', 'assetlinks.json'));
+});
+app.use(express.static(path.join(__dirname, 'public'), { dotfiles: 'allow' }));
 app.get('*', function(req, res){
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
